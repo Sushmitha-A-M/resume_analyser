@@ -33,48 +33,67 @@ def extract_text(pdf_path):
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
             page_text = page.extract_text()
+
             if page_text:
                 text += page_text.lower()
 
     return text
 
-@app.route('/analyze', methods=['POST'])
+@app.route('/analyze', methods=['GET', 'POST'])
 def analyze_resume():
 
+    if request.method == 'GET':
+        return jsonify({
+            "message": "Analyze endpoint is working. Please send a POST request with a PDF file."
+        })
+
     if 'resume' not in request.files:
-        return jsonify({"error": "No resume file uploaded"}), 400
+        return jsonify({
+            "error": "No resume file uploaded"
+        }), 400
 
     file = request.files['resume']
+
+    if file.filename == '':
+        return jsonify({
+            "error": "No file selected"
+        }), 400
 
     filepath = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(filepath)
 
-    resume_text = extract_text(filepath)
+    try:
+        resume_text = extract_text(filepath)
 
-    found_skills = []
-    missing_skills = []
+        found_skills = []
+        missing_skills = []
 
-    for skill in SKILLS:
-        if skill in resume_text:
-            found_skills.append(skill)
+        for skill in SKILLS:
+            if skill in resume_text:
+                found_skills.append(skill)
+            else:
+                missing_skills.append(skill)
+
+        score = int((len(found_skills) / len(SKILLS)) * 100)
+
+        if score >= 80:
+            prediction = "High Chance of Shortlisting"
+        elif score >= 60:
+            prediction = "Moderate Chance"
         else:
-            missing_skills.append(skill)
+            prediction = "Needs Improvement"
 
-    score = int((len(found_skills) / len(SKILLS)) * 100)
+        return jsonify({
+            "score": score,
+            "prediction": prediction,
+            "found_skills": found_skills,
+            "missing_skills": missing_skills
+        })
 
-    if score >= 80:
-        prediction = "High Chance of Shortlisting"
-    elif score >= 60:
-        prediction = "Moderate Chance"
-    else:
-        prediction = "Needs Improvement"
-
-    return jsonify({
-        "score": score,
-        "prediction": prediction,
-        "found_skills": found_skills,
-        "missing_skills": missing_skills
-    })
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
